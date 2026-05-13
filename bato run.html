@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stairway Runner - Mobile Ready</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+            font-family: Arial, sans-serif;
+            /* Prevent accidental highlighting or zooming on mobile */
+            touch-action: none; 
+            user-select: none;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        #scoreBoard {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            display: none;
+            text-align: center;
+            z-index: 20;
+        }
+        button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #e50000;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            display: inline-block;
+            font-weight: bold;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+        }
+        button:hover { background-color: #cc0000; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div id="scoreBoard">Score: 0</div>
+        <div style="font-size: 14px; margin-top: 5px;">Swipe Left/Right to move</div>
+    </div>
+    
+    <div id="gameOver">
+        CRASHED!<br>
+        <button onclick="location.reload()" id="tryAgainBtn">Try Again</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <script>
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x87CEEB, 20, 80);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x87CEEB);
+        document.body.appendChild(renderer.domElement);
+
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(-5, 10, 5);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x606060));
+
+        // --- Image Loaders ---
+        const textureLoader = new THREE.TextureLoader();
+        
+        const obstacleTexture = textureLoader.load('trillanes.png');
+        const playerFrame1 = textureLoader.load('bato1.png');
+        const playerFrame2 = textureLoader.load('bato2.png');
+
+        // Player Setup
+        const playerMat1 = new THREE.SpriteMaterial({ map: playerFrame1, color: 0xffffff });
+        const playerMat2 = new THREE.SpriteMaterial({ map: playerFrame2, color: 0xffffff });
+
+        const player = new THREE.Sprite(playerMat1);
+        player.scale.set(2.5, 4.0, 1); 
+        player.position.y = 1.9; 
+        scene.add(player);
+
+        const steps = [];
+        const stepCount = 60;
+        const stepDepth = 2; 
+        
+        const stepGeo = new THREE.BoxGeometry(14, 0.5, stepDepth - 0.2); 
+        const stepMat1 = new THREE.MeshLambertMaterial({ color: 0x666666 }); 
+        const stepMat2 = new THREE.MeshLambertMaterial({ color: 0x888888 }); 
+
+        for(let i = 0; i < stepCount; i++) {
+            const step = new THREE.Mesh(stepGeo, i % 2 === 0 ? stepMat1 : stepMat2);
+            step.position.set(0, -0.25, -i * stepDepth);
+            scene.add(step);
+            steps.push(step);
+        }
+
+        const railMat = new THREE.MeshLambertMaterial({ color: 0xdd0000 });
+        
+        const topRailGeo = new THREE.BoxGeometry(0.5, 0.5, 150);
+        const leftRail = new THREE.Mesh(topRailGeo, railMat);
+        leftRail.position.set(-7.5, 2, -40);
+        scene.add(leftRail);
+        
+        const rightRail = new THREE.Mesh(topRailGeo, railMat);
+        rightRail.position.set(7.5, 2, -40);
+        scene.add(rightRail);
+
+        const posts = [];
+        const postGeo = new THREE.BoxGeometry(0.5, 2.5, 0.5);
+        const postSpacing = 8;
+        const postCount = 15;
+
+        for(let i = 0; i < postCount; i++) {
+            const postL = new THREE.Mesh(postGeo, railMat);
+            postL.position.set(-7.5, 0.75, -i * postSpacing);
+            scene.add(postL);
+            posts.push(postL);
+
+            const postR = new THREE.Mesh(postGeo, railMat);
+            postR.position.set(7.5, 0.75, -i * postSpacing);
+            scene.add(postR);
+            posts.push(postR);
+        }
+
+        camera.position.set(0, 4, 7); 
+        camera.lookAt(0, -1, -10);
+
+        let score = 0;
+        let gameActive = true;
+        const obstacles = [];
+        const speed = 0.4;
+        const lanes = [-3, 0, 3]; 
+        let currentLane = 1;
+
+        // --- 1. Keyboard Controls (Still works for PC) ---
+        window.addEventListener('keydown', (e) => {
+            if (!gameActive) return;
+            if (e.key === 'ArrowLeft' && currentLane > 0) {
+                currentLane--;
+            } else if (e.key === 'ArrowRight' && currentLane < 2) {
+                currentLane++;
+            }
+        });
+
+        // --- 2. NEW: Mobile Swipe Controls ---
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        // Record where the finger first touches
+        window.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        }, false);
+
+        // Record where the finger leaves the screen
+        window.addEventListener('touchend', (e) => {
+            if (!gameActive) return;
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        }, false);
+
+        function handleSwipe() {
+            // Calculate the distance of the swipe
+            let swipeDistance = touchEndX - touchStartX;
+            
+            // We require a minimum swipe distance of 30 pixels so a simple tap doesn't trigger a move
+            if (swipeDistance < -30 && currentLane > 0) {
+                // Swiped Left (End X is smaller than Start X)
+                currentLane--;
+            } else if (swipeDistance > 30 && currentLane < 2) {
+                // Swiped Right (End X is larger than Start X)
+                currentLane++;
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        // Optional: Make button work with touch instantly to prevent mobile delay
+        document.getElementById('tryAgainBtn').addEventListener('touchstart', () => {
+            location.reload();
+        });
+
+        function spawnObstacle() {
+            if (!gameActive) return;
+            
+            const obsMat = new THREE.SpriteMaterial({ 
+                color: 0xffffff,
+                map: obstacleTexture 
+            }); 
+            
+            const obstacle = new THREE.Sprite(obsMat);
+            obstacle.scale.set(3.0, 3.0, 1);
+            const randomLane = Math.floor(Math.random() * 3);
+            obstacle.position.set(lanes[randomLane], 1.4, -90);
+            
+            scene.add(obstacle);
+            obstacles.push(obstacle);
+
+            setTimeout(spawnObstacle, Math.random() * 1000 + 500);
+        }
+        spawnObstacle();
+
+        function animate() {
+            if (!gameActive) return;
+            requestAnimationFrame(animate);
+
+            const isFrame1 = Math.floor(Date.now() / 200) % 2 === 0;
+            player.material = isFrame1 ? playerMat1 : playerMat2;
+
+            const targetX = lanes[currentLane];
+            player.position.x += (targetX - player.position.x) * 0.15;
+
+            steps.forEach(step => {
+                step.position.z += speed;
+                if (step.position.z > 10) {
+                    step.position.z -= (stepCount * stepDepth);
+                }
+            });
+
+            posts.forEach(post => {
+                post.position.z += speed;
+                if (post.position.z > 10) {
+                    post.position.z -= (postCount * postSpacing);
+                }
+            });
+
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.position.z += speed;
+
+                const dx = Math.abs(player.position.x - obs.position.x);
+                const dz = Math.abs(player.position.z - obs.position.z);
+                
+                if (dx < 1.4 && dz < 1.2) {
+                    gameOver();
+                }
+
+                if (obs.position.z > 10) {
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                    score += 10;
+                    document.getElementById('scoreBoard').innerText = 'Score: ' + score;
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            document.getElementById('gameOver').style.display = 'block';
+            player.material.color.setHex(0xff0000); 
+            renderer.render(scene, camera); 
+        }
+
+        animate();
+    </script>
+</body>
+</html>
