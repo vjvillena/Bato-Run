@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bato Run</title>
+    <title>Stairway Runner - Mobile Ready</title>
     <style>
         body {
             margin: 0;
             overflow: hidden;
-            background-color: #87CEEB;
+            background-color: #111; /* Changed to dark neutral */
             font-family: Arial, sans-serif;
             /* Prevent accidental highlighting or zooming on mobile */
             touch-action: none; 
@@ -19,7 +19,7 @@
             top: 20px;
             left: 20px;
             color: white;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8); /* Darkened shadow for readability */
             z-index: 10;
         }
         #scoreBoard {
@@ -70,12 +70,13 @@
 
     <script>
         const scene = new THREE.Scene();
-        scene.fog = new THREE.Fog(0x87CEEB, 20, 80);
+        // Changed fog to a dark color so the stairs fade into shadow instead of bright blue
+        scene.fog = new THREE.Fog(0x222222, 20, 80);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x87CEEB);
+        // Removed setClearColor since we are using a background image now
         document.body.appendChild(renderer.domElement);
 
         const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -85,6 +86,9 @@
 
         // --- Image Loaders ---
         const textureLoader = new THREE.TextureLoader();
+        
+        // --- NEW: Set the Background Image ---
+        scene.background = textureLoader.load('senate.jpg');
         
         const obstacleTexture = textureLoader.load('trillanes.png');
         const playerFrame1 = textureLoader.load('bato1.png');
@@ -152,7 +156,7 @@
         const lanes = [-3, 0, 3]; 
         let currentLane = 1;
 
-        // --- 1. Keyboard Controls (Still works for PC) ---
+        // --- 1. Keyboard Controls ---
         window.addEventListener('keydown', (e) => {
             if (!gameActive) return;
             if (e.key === 'ArrowLeft' && currentLane > 0) {
@@ -162,16 +166,14 @@
             }
         });
 
-        // --- 2. NEW: Mobile Swipe Controls ---
+        // --- 2. Mobile Swipe Controls ---
         let touchStartX = 0;
         let touchEndX = 0;
 
-        // Record where the finger first touches
         window.addEventListener('touchstart', (e) => {
             touchStartX = e.changedTouches[0].screenX;
         }, false);
 
-        // Record where the finger leaves the screen
         window.addEventListener('touchend', (e) => {
             if (!gameActive) return;
             touchEndX = e.changedTouches[0].screenX;
@@ -179,15 +181,11 @@
         }, false);
 
         function handleSwipe() {
-            // Calculate the distance of the swipe
             let swipeDistance = touchEndX - touchStartX;
             
-            // We require a minimum swipe distance of 30 pixels so a simple tap doesn't trigger a move
             if (swipeDistance < -30 && currentLane > 0) {
-                // Swiped Left (End X is smaller than Start X)
                 currentLane--;
             } else if (swipeDistance > 30 && currentLane < 2) {
-                // Swiped Right (End X is larger than Start X)
                 currentLane++;
             }
         }
@@ -198,7 +196,6 @@
             camera.updateProjectionMatrix();
         });
 
-        // Optional: Make button work with touch instantly to prevent mobile delay
         document.getElementById('tryAgainBtn').addEventListener('touchstart', () => {
             location.reload();
         });
